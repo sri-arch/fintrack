@@ -1,16 +1,15 @@
 'use client'
-// FinTrack app shell: auth gate + adaptive navigation (sidebar on desktop, bottom tabs + FAB on mobile)
+// FinTrack app shell: adaptive navigation (sidebar on desktop, bottom tabs + FAB on mobile)
 
 import { useEffect, useRef, useState } from 'react'
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   LayoutDashboard, ArrowLeftRight, PiggyBank, Target, Sparkles, Settings as SettingsIcon,
-  Wallet, Plus, LogOut, Loader2,
+  Wallet, Plus, Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
-import { AuthView } from './auth-view'
 import { DashboardView } from './dashboard'
 import { TransactionsView } from './transactions'
 import { BudgetsView } from './budgets'
@@ -146,7 +145,22 @@ function FinTrackInner() {
     )
   }
 
-  if (!user) return <AuthView />
+  // Auto-login should guarantee a user; if it still failed (e.g. DB down), show a friendly retry state
+  if (!user) {
+    return (
+      <main className="min-h-screen grid place-items-center bg-background">
+        <div className="text-center" role="status" aria-live="polite">
+          <span className="mx-auto size-12 rounded-2xl bg-primary text-primary-foreground grid place-items-center">
+            <Wallet className="size-6" aria-hidden="true" />
+          </span>
+          <p className="mt-3 text-sm text-muted-foreground">Could not start FinTrack. Please refresh the page.</p>
+          <Button variant="outline" size="sm" className="mt-4 rounded-xl" onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </div>
+      </main>
+    )
+  }
 
   const initials = user.name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()
 
@@ -195,13 +209,6 @@ function FinTrackInner() {
                 <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               </div>
             </div>
-            <Button
-              variant="ghost" size="sm"
-              className="w-full justify-start text-muted-foreground rounded-xl min-h-10"
-              onClick={async () => { await api('/api/auth/logout', { method: 'POST' }); qc.invalidateQueries({ queryKey: ['me'] }); window.location.reload() }}
-            >
-              <LogOut className="size-4" aria-hidden="true" /> Sign out
-            </Button>
           </div>
         </aside>
 
