@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  baseCurrency String   @default("USD")
+  rates        String? // JSON: custom exchange-rate overrides { "EUR": 0.9, ... }
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  sessions     Session[]
+  categories   Category[]
+  transactions Transaction[]
+  budgets      Budget[]
+  goals        Goal[]
+  insights     Insight[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Category {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  icon         String   @default("Tag") // lucide icon name
+  color        String   @default("#10b981") // hex
+  type         String   @default("EXPENSE") // EXPENSE | INCOME
+  isSystem     Boolean  @default(false)
+  isDefault    Boolean  @default(false) // default target for AI categorization
+  createdAt    DateTime @default(now())
+  transactions Transaction[]
+  budgets      Budget[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Transaction {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId    String?
+  category      Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  type          String // EXPENSE | INCOME
+  amount        Float
+  currency      String    @default("USD")
+  description   String
+  merchant      String?
+  notes         String?
+  date          DateTime
+  aiCategorized Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId, date])
+  @@index([userId, type])
+}
+
+model Budget {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  amount     Float
+  month      String // "2026-10"
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, categoryId, month])
+  @@index([userId, month])
+}
+
+model Goal {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  icon          String    @default("Target")
+  color         String    @default("#10b981")
+  targetAmount  Float
+  currentAmount Float     @default(0)
+  currency      String    @default("USD")
+  targetDate    DateTime?
+  status        String    @default("ACTIVE") // ACTIVE | COMPLETED
+  note          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Insight {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // RULE | AI
+  type      String // ANOMALY | BUDGET | TREND | REVIEW | TIP | MILESTONE
+  severity  String   @default("INFO") // INFO | SUCCESS | WARNING | CRITICAL
+  title     String
+  message   String
+  data      String? // JSON payload
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
