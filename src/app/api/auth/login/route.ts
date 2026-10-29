@@ -13,8 +13,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Incorrect email or password. Please try again.' }, { status: 401 })
     }
 
-    await createSession(user.id)
-    return NextResponse.json({ user: { id: user.id, email: user.email, name: user.name, baseCurrency: user.baseCurrency } })
+    const token = await createSession(user.id)
+    return NextResponse.json({ user: { id: user.id, email: user.email, name: user.name, baseCurrency: user.baseCurrency }, sessionToken: token })
   } catch (err) {
     console.error('[login]', err)
     return NextResponse.json({ error: 'Could not sign you in. Please try again.' }, { status: 500 })

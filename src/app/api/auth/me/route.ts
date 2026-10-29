@@ -8,14 +8,16 @@ export async function GET() {
 
     // No valid session → transparently start a demo session so visitors
     // land straight on the dashboard (auth page removed).
+    let sessionToken: string | undefined
     if (!user) {
       const demo = await ensureDemoAccount()
-      await createSession(demo.id)
+      sessionToken = await createSession(demo.id)
       user = demo
     }
 
     return NextResponse.json({
       user: { id: user.id, email: user.email, name: user.name, baseCurrency: user.baseCurrency, rates: user.rates },
+      ...(sessionToken ? { sessionToken } : {}),
     })
   } catch (err) {
     console.error('[me]', err)

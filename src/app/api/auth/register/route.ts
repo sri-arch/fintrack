@@ -26,8 +26,8 @@ export async function POST(req: NextRequest) {
     if (existing) {
       // If it is the shared demo account, allow signing in with its known password
       if (email === 'demo@fintrack.app' && verifyPassword(password, existing.passwordHash)) {
-        await createSession(existing.id)
-        return NextResponse.json({ user: publicUser(existing) })
+        const token = await createSession(existing.id)
+        return NextResponse.json({ user: publicUser(existing), sessionToken: token })
       }
       return NextResponse.json({ error: 'An account with this email already exists. Try signing in.' }, { status: 409 })
     }
@@ -40,8 +40,8 @@ export async function POST(req: NextRequest) {
       await seedUserData(user.id, baseCurrency)
     }
 
-    await createSession(user.id)
-    return NextResponse.json({ user: publicUser(user) })
+    const token = await createSession(user.id)
+    return NextResponse.json({ user: publicUser(user), sessionToken: token })
   } catch (err) {
     console.error('[register]', err)
     return NextResponse.json({ error: 'Could not create your account. Please try again.' }, { status: 500 })
@@ -52,8 +52,8 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   try {
     const demo = await ensureDemoAccount()
-    await createSession(demo.id)
-    return NextResponse.json({ user: { id: demo.id, email: demo.email, name: demo.name, baseCurrency: demo.baseCurrency } })
+    const token = await createSession(demo.id)
+    return NextResponse.json({ user: { id: demo.id, email: demo.email, name: demo.name, baseCurrency: demo.baseCurrency }, sessionToken: token })
   } catch (err) {
     console.error('[demo-login]', err)
     return NextResponse.json({ error: 'Could not start the demo. Please try again.' }, { status: 500 })

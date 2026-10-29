@@ -87,15 +87,48 @@ export interface RuleInsight {
   message: string
 }
 
+// ---------- Session token (iframe-safe auth) ----------
+// Cookies can be blocked inside cross-site preview iframes, so the session token is
+// also kept in localStorage and sent via the x-session-token header on every call.
+
+const SESSION_KEY = 'fintrack_token'
+
+export function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem(SESSION_KEY)
+  } catch {
+    return null
+  }
+}
+
+function storeToken(token: string): void {
+  try {
+    localStorage.setItem(SESSION_KEY, token)
+  } catch {}
+}
+
+export function clearStoredToken(): void {
+  try {
+    localStorage.removeItem(SESSION_KEY)
+  } catch {}
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getStoredToken()
   const res = await fetch(path, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'x-session-token': token } : {}),
+      ...(init?.headers ?? {}),
+    },
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     throw new Error((data as { error?: string }).error ?? 'Something went wrong. Please try again.')
   }
+  const sessionToken = (data as { sessionToken?: string }).sessionToken
+  if (sessionToken) storeToken(sessionToken)
   return data as T
 }
 

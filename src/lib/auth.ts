@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto'
 import { db } from '@/lib/db'
 
@@ -28,28 +28,42 @@ export async function createSession(userId: string): Promise<string> {
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000)
   await db.session.create({ data: { token, userId, expiresAt } })
   const jar = await cookies()
-  jar.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: false, // sandbox preview is http
-    path: '/',
-    expires: expiresAt,
-  })
+  // Behind HTTPS (preview gateway), mark the cookie SameSite=None + Partitioned so it
+  // also works inside cross-site preview iframes. Plain http (localhost) keeps Lax.
+  const proto = ((await headers()).get('x-forwarded-proto') ?? '').split(',')[0].trim()
+  const base = { httpOnly: true as const, path: '/', expires: expiresAt }
+  try {
+    if (proto === 'https') {
+      jar.set(SESSION_COOKIE, token, { ...base, sameSite: 'none', secure: true, partitioned: true })
+    } else {
+      jar.set(SESSION_COOKIE, token, { ...base, sameSite: 'lax', secure: false })
+    }
+  } catch {
+    jar.set(SESSION_COOKIE, token, { ...base, sameSite: 'lax', secure: false })
+  }
   return token
 }
 
-export async function destroySession(): Promise<void> {
+/** Session token from the x-session-token header (iframe-safe) or the cookie (same-site) */
+export async function getSessionToken(): Promise<string | null> {
+  const h = await headers()
+  const fromHeader = h.get('x-session-token')
+  if (fromHeader) return fromHeader
   const jar = await cookies()
-  const token = jar.get(SESSION_COOKIE)?.value
+  return jar.get(SESSION_COOKIE)?.value ?? null
+}
+
+export async function destroySession(): Promise<void> {
+  const token = await getSessionToken()
   if (token) {
     await db.session.deleteMany({ where: { token } })
   }
+  const jar = await cookies()
   jar.delete(SESSION_COOKIE)
 }
 
 export async function getCurrentUser() {
-  const jar = await cookies()
-  const token = jar.get(SESSION_COOKIE)?.value
+  const token = await getSessionToken()
   if (!token) return null
   const session = await db.session.findUnique({
     where: { token },
