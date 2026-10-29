@@ -1,19 +1,20 @@
 'use client'
-// Dashboard: safe-to-spend hero, month summary, budget snapshot, recent activity, quick insights
+// Dashboard: safe-to-spend hero, month summary, savings rate, pace projection, cash flow trend,
+// goal snapshot, budget snapshot, recent activity, quick insights
 
 import { useMemo } from 'react'
 import {
-  ArrowDownRight, ArrowUpRight, Flame, Info, Sparkles, Wallet, Plus,
+  ArrowDownRight, ArrowUpRight, Flame, Info, Sparkles, Wallet, Plus, Target,
   TriangleAlert, TrendingDown, TrendingUp, CalendarDays,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { AppIcon } from './app-icon'
-import { DonutChart, DailyBarsChart } from './charts'
-import { money, fmtDate, monthLabel, type Analytics, type Category, type RuleInsight, type Transaction, type User } from '@/lib/client'
+import { DonutChart, DailyBarsChart, CashflowChart, GoalRing } from './charts'
+import { money, fmtDate, monthLabel, type Analytics, type Category, type Goal, type RuleInsight, type Transaction, type User } from '@/lib/client'
 
 interface Props {
   user: User
@@ -21,12 +22,13 @@ interface Props {
   insights: RuleInsight[]
   recent: Transaction[] | undefined
   categories: Category[]
+  goals: Goal[] | undefined
   loading: boolean
   onAdd: () => void
-  onGo: (tab: 'transactions' | 'budgets' | 'insights') => void
+  onGo: (tab: 'transactions' | 'budgets' | 'insights' | 'goals') => void
 }
 
-export function DashboardView({ user, analytics, insights, recent, loading, onAdd, onGo }: Props) {
+export function DashboardView({ user, analytics, insights, recent, goals, loading, onAdd, onGo }: Props) {
   const base = user.baseCurrency
   const a = analytics
 
@@ -36,6 +38,26 @@ export function DashboardView({ user, analytics, insights, recent, loading, onAd
   )
 
   const expenseDelta = a && a.prevTotals.expense > 0 ? ((a.totals.expense - a.prevTotals.expense) / a.prevTotals.expense) * 100 : null
+
+  // Savings rate: share of income kept this month (20% is the healthy benchmark)
+  const savingsRate = a && a.totals.income > 0 ? (a.totals.net / a.totals.income) * 100 : null
+
+  // Month-end pace projection: average daily spend × days in month (current month only)
+  const isCurrentMonth = Boolean(a?.safeToSpend)
+  const dayOfMonth = new Date().getDate()
+  const daysInMonth = a?.safeToSpend?.daysInMonth ?? 0
+  const projected = a && isCurrentMonth && dayOfMonth > 0 && a.totals.expense > 0
+    ? (a.totals.expense / dayOfMonth) * daysInMonth
+    : null
+
+  // Goals snapshot: most-progressed active goals first
+  const allGoals = goals ?? []
+  const goalPct = (g: Goal) => (g.targetAmount > 0 ? (g.currentAmount / g.targetAmount) * 100 : 0)
+  const goalList = allGoals
+    .filter((g) => g.status === 'ACTIVE')
+    .sort((x, y) => goalPct(y) - goalPct(x))
+    .slice(0, 3)
+  const completedGoals = allGoals.filter((g) => g.status === 'COMPLETED').length
 
   const severityStyle: Record<string, string> = {
     CRITICAL: 'border-rose-200 bg-rose-50 text-rose-900',
@@ -107,7 +129,7 @@ export function DashboardView({ user, analytics, insights, recent, loading, onAd
       </section>
 
       {/* Month summary */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4" aria-label="This month's summary">
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4" aria-label="This month's summary">
         <Card className="rounded-2xl shadow-sm border">
           <CardContent className="p-5">
             <p className="text-sm text-muted-foreground font-medium">Money in</p>
@@ -132,6 +154,29 @@ export function DashboardView({ user, analytics, insights, recent, loading, onAd
             <p className="text-sm text-muted-foreground font-medium">Kept (net)</p>
             <p className={`mt-1 text-2xl font-bold tabular-nums ${a.totals.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{money(a.totals.net, base)}</p>
             <p className="mt-1 text-xs text-muted-foreground">{a.txCount} entries this month</p>
+          </CardContent>
+        </Card>
+        <Card className="rounded-2xl shadow-sm border">
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground font-medium">Savings rate</p>
+            {savingsRate === null ? (
+              <>
+                <p className="mt-1 text-2xl font-bold tabular-nums text-muted-foreground">—</p>
+                <p className="mt-1 text-xs text-muted-foreground">Add income to see this</p>
+              </>
+            ) : (
+              <>
+                <p className={`mt-1 text-2xl font-bold tabular-nums ${savingsRate >= 20 ? 'text-emerald-600' : savingsRate >= 0 ? 'text-amber-600' : 'text-rose-600'}`}>
+                  {Math.round(savingsRate)}%
+                </p>
+                <div className="mt-2">
+                  <Progress value={Math.min(Math.max(savingsRate, 0), 100)} className="h-1.5" aria-label={`Savings rate ${Math.round(savingsRate)}%, benchmark 20%`} />
+                  <p className={`mt-1.5 text-xs font-medium ${savingsRate >= 20 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                    {savingsRate >= 20 ? 'Above the 20% benchmark' : '20%+ is the healthy zone'}
+                  </p>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </section>
@@ -167,14 +212,114 @@ export function DashboardView({ user, analytics, insights, recent, loading, onAd
         </Card>
 
         <Card className="rounded-2xl shadow-sm border">
-          <CardHeader className="pb-1 flex-row items-center justify-between">
+          <CardHeader className="pb-1">
             <CardTitle className="text-base font-semibold">Daily spending</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => onGo('insights')} className="text-primary rounded-lg gap-1">
-              <Sparkles className="size-3.5" aria-hidden="true" /> Insights
-            </Button>
+            <CardAction>
+              <Button variant="ghost" size="sm" onClick={() => onGo('insights')} className="text-primary rounded-lg gap-1">
+                <Sparkles className="size-3.5" aria-hidden="true" /> Insights
+              </Button>
+            </CardAction>
           </CardHeader>
           <CardContent className="pt-2">
             <DailyBarsChart data={a.dailySeries.map((d) => ({ day: d.day, expense: d.expense }))} currency={base} today={todayKey} />
+            {projected !== null && (
+              <p className="mt-3 text-xs text-muted-foreground px-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                <TrendingUp className="size-3.5 shrink-0" aria-hidden="true" />
+                <span>At this pace you&apos;ll spend about</span>
+                <span className="font-semibold text-foreground tabular-nums">{money(projected, base)}</span>
+                <span>by month end</span>
+                {a.prevTotals.expense > 0 && (
+                  <span className={`font-medium tabular-nums ${projected > a.prevTotals.expense ? 'text-rose-500' : 'text-emerald-600'}`}>
+                    ({projected > a.prevTotals.expense ? '+' : '−'}{Math.abs(Math.round(((projected - a.prevTotals.expense) / a.prevTotals.expense) * 100))}% vs last month)
+                  </span>
+                )}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Cash flow trend + goals snapshot */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="rounded-2xl shadow-sm border lg:col-span-2">
+          <CardHeader className="pb-1">
+            <CardTitle className="text-base font-semibold">Cash flow — last 3 months</CardTitle>
+            <CardAction>
+              <Button variant="ghost" size="sm" onClick={() => onGo('insights')} className="text-primary rounded-lg gap-1">
+                <Sparkles className="size-3.5" aria-hidden="true" /> Details
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="pt-2">
+            {a.cashflow90.length === 0 ? (
+              <div className="h-[220px] grid place-items-center text-sm text-muted-foreground">
+                No transactions in the last 90 days yet.
+              </div>
+            ) : (
+              <CashflowChart data={a.cashflow90} currency={base} height={220} />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl shadow-sm border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-1.5">
+              <Target className="size-4 text-primary" aria-hidden="true" /> Goals
+            </CardTitle>
+            <CardAction>
+              <Button variant="ghost" size="sm" onClick={() => onGo('goals')} className="text-primary rounded-lg">
+                Manage
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            {allGoals.length === 0 ? (
+              <div className="py-5 text-center">
+                <Target className="size-7 mx-auto text-muted-foreground" aria-hidden="true" />
+                <p className="text-sm font-semibold mt-2">No goals yet</p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-[220px] mx-auto">
+                  Save for what matters — an emergency fund is a great start.
+                </p>
+                <Button variant="outline" size="sm" onClick={() => onGo('goals')} className="mt-3 rounded-xl">
+                  Set a goal
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {goalList.map((g) => {
+                  const eta = g.targetDate ? Math.ceil((new Date(g.targetDate).getTime() - Date.now()) / (30 * 86400e3)) : null
+                  const monthlyNeeded = eta && eta > 0 ? Math.max(g.targetAmount - g.currentAmount, 0) / eta : null
+                  return (
+                    <div key={g.id} className="flex items-center gap-3">
+                      <GoalRing pct={goalPct(g)} color={g.color} size={56} label={g.name} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold truncate flex items-center gap-1.5">
+                          <AppIcon name={g.icon} className="size-3.5 shrink-0" style={{ color: g.color }} />
+                          <span className="truncate">{g.name}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground tabular-nums mt-0.5">
+                          {money(g.currentAmount, g.currency, { compact: true })} of {money(g.targetAmount, g.currency, { compact: true })}
+                        </p>
+                        <p className="text-xs font-medium mt-0.5 text-primary">
+                          {g.status === 'COMPLETED'
+                            ? 'Goal reached'
+                            : monthlyNeeded
+                              ? `~${money(monthlyNeeded, g.currency, { noDecimals: true })}/mo needed`
+                              : eta !== null && eta > 0
+                                ? `${eta} month${eta !== 1 ? 's' : ''} left`
+                                : 'No deadline'}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+                {completedGoals > 0 && (
+                  <p className="text-xs text-muted-foreground pt-1 border-t">
+                    {completedGoals} completed goal{completedGoals !== 1 ? 's' : ''} — view them in Goals.
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </section>
@@ -210,11 +355,13 @@ export function DashboardView({ user, analytics, insights, recent, loading, onAd
         </Card>
 
         <Card className="rounded-2xl shadow-sm border">
-          <CardHeader className="pb-2 flex-row items-center justify-between">
+          <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">Budgets</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => onGo('budgets')} className="text-primary rounded-lg">
-              Manage
-            </Button>
+            <CardAction>
+              <Button variant="ghost" size="sm" onClick={() => onGo('budgets')} className="text-primary rounded-lg">
+                Manage
+              </Button>
+            </CardAction>
           </CardHeader>
           <CardContent className="space-y-3.5">
             {a.budgetStatus.length === 0 ? (
@@ -243,11 +390,13 @@ export function DashboardView({ user, analytics, insights, recent, loading, onAd
         </Card>
 
         <Card className="rounded-2xl shadow-sm border">
-          <CardHeader className="pb-2 flex-row items-center justify-between">
+          <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">Recent activity</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => onGo('transactions')} className="text-primary rounded-lg">
-              View all
-            </Button>
+            <CardAction>
+              <Button variant="ghost" size="sm" onClick={() => onGo('transactions')} className="text-primary rounded-lg">
+                View all
+              </Button>
+            </CardAction>
           </CardHeader>
           <CardContent className="space-y-1">
             {(recent ?? []).slice(0, 6).map((t) => {

@@ -255,6 +255,7 @@ function FinTrackInner() {
                 insights={dashboardInsights}
                 recent={recentData?.transactions}
                 categories={categories}
+                goals={goalData?.goals}
                 loading={loading}
                 onAdd={() => setAddOpen(true)}
                 onGo={(t) => setTab(t)}
