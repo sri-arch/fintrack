@@ -322,22 +322,29 @@ export async function seedUserData(userId: string, baseCurrency: string) {
   })
 }
 
-/** Ensure the shared demo account exists with fresh data. */
+/** Ensure the shared demo account exists with fresh data. Race-safe on serverless. */
 export async function ensureDemoAccount() {
   const email = 'demo@fintrack.app'
   const existing = await db.user.findUnique({ where: { email } })
   if (existing) return existing
   const { hashPassword } = await import('@/lib/auth')
-  const user = await db.user.create({
-    data: {
-      email,
-      passwordHash: hashPassword('demo1234'),
-      name: 'Demo User',
-      baseCurrency: 'USD',
-    },
-  })
-  await seedUserData(user.id, 'USD')
-  return user
+  try {
+    const user = await db.user.create({
+      data: {
+        email,
+        passwordHash: hashPassword('demo1234'),
+        name: 'Demo User',
+        baseCurrency: 'USD',
+      },
+    })
+    await seedUserData(user.id, 'USD')
+    return user
+  } catch (err) {
+    // Lost a creation race (unique email) — another instance seeded it already
+    const user = await db.user.findUnique({ where: { email } })
+    if (user) return user
+    throw err
+  }
 }
 
 export function makeInvitationCode(): string {

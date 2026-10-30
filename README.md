@@ -48,8 +48,23 @@ Open [http://localhost:3000](http://localhost:3000).
 Create a `.env` file in the project root:
 
 ```env
-DATABASE_URL=file:./db/custom.db
+DATABASE_URL=file:./prisma/dev.db
 ```
+
+## Deploying to Vercel
+
+The app uses SQLite, which needs two small adaptations on serverless platforms — both are handled automatically by the build:
+
+1. **Build time** — `prisma db push` creates a schema-only `prisma/dev.db`, which is bundled into the serverless functions via `outputFileTracingIncludes`.
+2. **Runtime** — the bundled database is copied once into the writable `/tmp` directory per instance, and the demo account with 90 days of sample data is seeded lazily on first request. Data persists while an instance is warm and resets on new instances — perfect for demos; for production persistence, switch the Prisma datasource to Turso or Postgres.
+
+No environment variables are required on Vercel (`DATABASE_URL` is optional).
+
+```bash
+npm i -g vercel
+vercel --prod
+```
+
 
 ## Project Structure
 
